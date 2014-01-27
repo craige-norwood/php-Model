@@ -16,7 +16,7 @@ $config = (object) array
 	'user'     => 'root',
 	'password' => 'root',
 	'name'     => 'fraud', // optional; but USE <dbname> must eventually be specified via sql()
-	'result_rows_as_objects' => 'false' // optional; default is false
+	'result_rows_as_objects' => false // optional; default is false
 );
 
 
@@ -30,7 +30,7 @@ $config = (object) array
 		'user'     => 'root',
 		'password' => 'root',
 		'name'     => 'fraud', // optional; but USE <dbname> must eventually be specified via sql()
-		'result_rows_as_objects' => 'false' // optional; default is false
+		'result_rows_as_objects' => false // optional; default is false
 	),
 	'log' => (object) array
 	(
@@ -52,7 +52,7 @@ $config = (object) array
 			'user'     => 'root',
 			'password' => 'root',
 			'name'     => 'fraud', // optional; but USE <dbname> must eventually be specified via sql()
-			'result_rows_as_objects' => 'true' // optional; default is false
+			'result_rows_as_objects' => true // optional; default is false
 		),
 		'log'=> (object) array
 		(
