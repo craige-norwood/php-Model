@@ -162,7 +162,6 @@ function autoloader( $classname )
 
 			// inject it into a file...
 			$tmp_name = tempNam( '', '' );
-			echo "$tmp_name <br />";
 			file_put_contents( $tmp_name, $code );
 
 			// ...and reel it back in (oh, the lengths we'll go to)
