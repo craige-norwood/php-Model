@@ -664,9 +664,14 @@ abstract class CrudAbstract
 				if (!isSet( $full_trace[$i]['class'] ) or strIpos( $full_trace[$i]['class'], 'Zend' ) === false) // then not a Zend file
 				{
 					if (isSet( $full_trace[$i]['class'] ))
-						$our_trace[] = $full_trace[$i]['class'].$full_trace[$i]['type'].$full_trace[$i]['function'].'() @ '.$full_trace[$i-1]['line'];
+						$our_trace[] = $full_trace[$i]['class']
+						             . $full_trace[$i]['type']
+						             . $full_trace[$i]['function']
+						             . (isSet( $full_trace[$i-1]['line'] ) ? ' @ '.$full_trace[$i-1]['line'] : '');
 					else
-						$our_trace[] = $full_trace[$i]['file'].', '.$full_trace[$i]['function'].'() @ '.$full_trace[$i-1]['line'];
+						$our_trace[] = $full_trace[$i]['file'].', '
+						             . $full_trace[$i]['function'].'()'
+						             . (isSet( $full_trace[$i-1]['line'] ) ? ' @ '.$full_trace[$i-1]['line'] : '');
 				}
 				else // refers to a Zend file; skip it
 					break;
