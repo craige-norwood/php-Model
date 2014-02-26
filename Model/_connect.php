@@ -177,7 +177,7 @@ spl_autoload_register( '\\'.__NAMESPACE__.'\\autoloader' );
 
 class Connect
 {
-	const version = 20140126;
+	const version = 20140226;
 
 	// to specify the adapter that will be used with the database
 	const using_MYSQL = 'MySQL';
@@ -637,7 +637,7 @@ class DB_resource
  */
 abstract class CrudAbstract
 {
-	const version = 20140125;
+	const version = 20140226;
 
 	/**
 	 * Emits the DB query statement and values to the query log.
@@ -1739,16 +1739,16 @@ abstract class CrudAbstract
 			case 2  : // they're either fields and predicate, or predicate and values
 			{
 				if (self::a_predicate( $args[0] )) // then get all fields, applying the predicate and its values
-					return array( '*', $args[0], (is_array( $args[1] ) ? $args[1] : (array)$args[1]) );
+					return array( '*', $args[0], (is_array( $args[1] ) ? array_values( $args[1] ) : (array)$args[1]) );
 				else // get just the specified fields, applying the predicate (w/o any values)
 					return array( $args[0], $args[1], null );
 			}
 			default : // they must be fields, predicate, and values
 			{
 				if (is_string( $args[0] ) and !empty( $args[0] ))
-					return array( $args[0], $args[1], (is_array( $args[2] ) ? $args[2] : (array)$args[2]) );
+					return array( $args[0], $args[1], (is_array( $args[2] ) ? array_values( $args[2] ) : (array)$args[2]) );
 				else // assume fields is a null placeholder, meaning get all
-					return array(      '*', $args[1], (is_array( $args[2] ) ? $args[2] : (array)$args[2]) );
+					return array(      '*', $args[1], (is_array( $args[2] ) ? array_values( $args[2] ) : (array)$args[2]) );
 			}
 		}
 	} // filter_args()
@@ -1948,7 +1948,8 @@ class Raw extends CrudAbstract
 		{
 			// ensure they're not empty and not (too) dangerous
 			// (printable ASCII, quotes are allowed)
-			$stmt   = filter_var( utf8_decode( trim( $stmt ) ), FILTER_SANITIZE_STRING );
+//			$stmt   = filter_var( utf8_decode( trim( $stmt ) ), FILTER_SANITIZE_STRING );
+//			$stmt   = filter_var( trim( $stmt ), FILTER_SANITIZE_STRING );
 			$module = trim( $module );
 
 			if (strLen( $stmt ) > 0  and  strLen( $module ) > 0)
