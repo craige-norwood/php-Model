@@ -177,7 +177,7 @@ spl_autoload_register( '\\'.__NAMESPACE__.'\\autoloader' );
 
 class Connect
 {
-	const version = 20140226;
+	const version = 20140307;
 
 	// to specify the adapter that will be used with the database
 	const using_MYSQL = 'MySQL';
@@ -637,7 +637,7 @@ class DB_resource
  */
 abstract class CrudAbstract
 {
-	const version = 20140226;
+	const version = 20140307;
 
 	/**
 	 * Emits the DB query statement and values to the query log.
@@ -1912,8 +1912,13 @@ abstract class CrudAbstract
 {
 	if (is_array( $set ))
 	{
-		$placeholders = join( ',', array_fill( 0, count( $set ), '?' ) );
-		return " IN ({$placeholders})";
+		if (count( $set ) > 0)
+		{
+			$placeholders = join( ',', array_fill( 0, count( $set ), '?' ) );
+			return " IN ({$placeholders})";
+		}
+		else // it's gonna be null, but at least there'll be something there to receive it
+			return " IN (?)";
 	}
 	elseif (is_string( $set ) /*might already be CSVs*/ or is_numeric( $set ) or is_bool( $set ))
 		return ' IN (?)'; // whatever, it's still just one item
