@@ -85,7 +85,7 @@ function autoloader( $classname )
 
 		$i = array_search( 'raw', $caseInsensitive_classname_parts ); // lives in _crudAbstract
 		if ($i !== false)
-			$adjusted[$i] = '_crudAbstract';
+			$adjusted[$i] = '_connect';
 
 		$i = array_search( 'tables', $caseInsensitive_classname_parts );
 		if ($i !== false)
@@ -177,7 +177,7 @@ spl_autoload_register( '\\'.__NAMESPACE__.'\\autoloader' );
 
 class Connect
 {
-	const version = 20140307;
+	const version = 20140424;
 
 	// to specify the adapter that will be used with the database
 	const using_MYSQL = 'MySQL';
@@ -234,7 +234,7 @@ class Connect
 	 */
 	public static function start_logging( /*string*/ $module_name = null )
 	{
-		if (! empty( $module_name )) // just for the one module
+		if ( ! empty( $module_name )) // just for the one module
 			$list = array( self::$db[ $module_name ] );
 		else // then start it for all modules
 		{
@@ -246,7 +246,7 @@ class Connect
 		foreach ($list as &$module)
 		{
 			// if it's not already open and we have a filename to refer to, open it
-			if (!is_resource( $module->log->file ) and !empty( $module->log->name ))
+			if ( ! is_resource( $module->log->file ) and !empty( $module->log->name ))
 				$module->log->file = fOpen( $module->log->name, 'a' );
 
 			// so how did it go?
@@ -271,7 +271,7 @@ class Connect
 	 */
 	public static function stop_logging( /*string*/ $module_name = null )
 	{
-		if (! empty( $module_name )) // just for the one module
+		if ( ! empty( $module_name )) // just for the one module
 			$list = array( self::$db[ $module_name ] );
 		else // then stop it for all modules
 		{
@@ -374,7 +374,7 @@ class Connect
 
 		elseif (isSet( self::$config->$default_module )) // then none found; use the generic they gave us
 		{
-			if (!isSet( self::$db[ self::DEFAULT_MODULE ] )) // then generic not already set up; do it now
+			if ( ! isSet( self::$db[ self::DEFAULT_MODULE ] )) // then generic not already set up; do it now
 				new self( self::DEFAULT_MODULE, $adapter ); // call ourselves specifying the generic,
 
 			// and copy its entry:
@@ -537,18 +537,18 @@ class DB_resource
 		// if using Zend's logger, just set this to null
 		if ($this->log->active and !empty( $this->log->name ))
 		{
-			if (!file_exists( $this->log->name ))
+			if ( ! file_exists( $this->log->name ))
 			{
 				$this->log->file = fOpen( $this->log->name, 'w' );
 
-				if (!file_exists( $this->log->name ))
+				if ( ! file_exists( $this->log->name ))
 					throw new \Exception( __METHOD__."(): Unable to create log file '{$this->log->name}'." );
 			}
 			else
 			{
 				$this->log->file = fOpen( $this->log->name, 'a' );
 
-				if (!file_exists( $this->log->name ))
+				if ( ! file_exists( $this->log->name ))
 					throw new \Exception( __METHOD__."(): Unable to open log file '{$this->log->name}'." );
 			}
 		}
@@ -637,7 +637,7 @@ class DB_resource
  */
 abstract class CrudAbstract
 {
-	const version = 20140307;
+	const version = 20140424;
 
 	/**
 	 * Emits the DB query statement and values to the query log.
@@ -661,7 +661,7 @@ abstract class CrudAbstract
 			// the first element is for here in log_query() which isn't too useful, so skip it; start at 1
 			for ($i=1; $i < $limit; ++$i)
 			{
-				if (!isSet( $full_trace[$i]['class'] ) or strIpos( $full_trace[$i]['class'], 'Zend' ) === false) // then not a Zend file
+				if ( ! isSet( $full_trace[$i]['class'] ) or strIpos( $full_trace[$i]['class'], 'Zend' ) === false) // then not a Zend file
 				{
 					if (isSet( $full_trace[$i]['class'] ))
 						$our_trace[] = $full_trace[$i]['class']
@@ -678,7 +678,7 @@ abstract class CrudAbstract
 			}
 
 			$entry_point = end( $full_trace );
-			if (!isSet( $entry_point['class'] ) or strIpos( $entry_point['class'], 'Zend' ) === false) // then not within Zend -- it's a main file
+			if ( ! isSet( $entry_point['class'] ) or strIpos( $entry_point['class'], 'Zend' ) === false) // then not within Zend -- it's a main file
 			{	// manually include the main file
 				$our_trace[] = date( DATE_RFC822 ).'  '.$full_trace[ $limit-1 ]['file'].' @ '.$full_trace[ $limit-1 ]['line'];
 			}
@@ -750,7 +750,7 @@ abstract class CrudAbstract
 		if (self::$in_transaction == 1)
 		{
 			$module = self::our_module_name();
-			if (!isSet( self::$db[ $module ] ))
+			if ( ! isSet( self::$db[ $module ] ))
 				self::$db[ $module ] = Connect::db( $module, Connect::using_PDO );
 
 			self::$db[ $module ]->conn->beginTransaction();
@@ -768,7 +768,7 @@ abstract class CrudAbstract
 		if (self::$in_transaction == 1)
 		{
 			$module = self::our_module_name();
-			if (!isSet( self::$db[ $module ] ))
+			if ( ! isSet( self::$db[ $module ] ))
 				self::$db[ $module ] = Connect::db( $module, Connect::using_PDO );
 
 			self::$db[ $module ]->conn->commit();
@@ -790,7 +790,7 @@ abstract class CrudAbstract
 		if (self::$in_transaction == 1)
 		{
 			$module = self::our_module_name();
-			if (!isSet( self::$db[ $module ] ))
+			if ( ! isSet( self::$db[ $module ] ))
 				self::$db[ $module ] = Connect::db( $module, Connect::using_PDO );
 
 			self::$db[ $module ]->conn->rollBack();
@@ -997,7 +997,7 @@ abstract class CrudAbstract
 		{
 			if (is_object( $stuff ))
 				$stuff = get_object_vars( $stuff );
-			elseif (! is_array( $stuff ))
+			elseif ( ! is_array( $stuff ))
 				throw new \Exception( __METHOD__.'( stuff : '.getType( $stuff ).' ): parameter must be an array or an object' );
 
 
@@ -1032,7 +1032,7 @@ abstract class CrudAbstract
 					$values = array_values( $fields );
 					$fields = join( '=?, ', array_keys( $fields ) ).'=?'; // creates 'field1=?, field2=?, ...'
 					$stmt = "INSERT INTO {$table} SET {$fields}";
-					if (!empty( $function_fields )) // append the db function fields (need a comma between)
+					if ( ! empty( $function_fields )) // append the db function fields (need a comma between)
 						$stmt .= ", {$function_fields}";
 				}
 				else // all simple name/values filtered out; only db fns must remain
@@ -1086,7 +1086,7 @@ abstract class CrudAbstract
 			// ensure we're dealing with an array
 			if (is_object( $stuff ))
 				$stuff = get_object_vars( $stuff );
-			elseif (! is_array( $stuff ))
+			elseif ( ! is_array( $stuff ))
 				throw new \Exception( __METHOD__.'( stuff : '.getType( $stuff ).' ): parameter must be an array or an object' );
 
 
@@ -1221,12 +1221,12 @@ abstract class CrudAbstract
 		{
 			if (is_object( $stuff ))
 				$stuff = get_object_vars( $stuff );
-			elseif (! is_array( $stuff ))
+			elseif ( ! is_array( $stuff ))
 				throw new \Exception( __METHOD__.'( stuff : '.getType( $stuff ).' ): parameter must be an array or an object' );
 
 			if (is_object( $update_only_stuff ))
 				$update_only_stuff = get_object_vars( $update_only_stuff );
-			elseif (! is_array( $update_only_stuff ))
+			elseif ( ! is_array( $update_only_stuff ))
 				throw new \Exception( __METHOD__.'( update_only_stuff : '.getType( $update_only_stuff ).' ): parameter must be an array or an object' );
 
 
@@ -1438,7 +1438,7 @@ abstract class CrudAbstract
 				{
 					$all_names[] = $property[ self::NAME ]; // (faster than copying the string itself)
 
-					if (!empty( $property[ self::KEY_TYPE ] ))// then it's a key; save the name special, too
+					if ( ! empty( $property[ self::KEY_TYPE ] ))// then it's a key; save the name special, too
 						$key_names[] = $property[ self::NAME ]; // (faster than copying the string itself)
 					else
 						$data_names[] = $property[ self::NAME ]; // (faster than copying the string itself)
@@ -1475,8 +1475,17 @@ abstract class CrudAbstract
 		$PDOstmt = self::prepared_statement( $stmt, $module );
 
 		// bind any values to their placeholders and perform the query
-		if (! is_array( $values ))
+		if ( ! is_array( $values ))
 			$values = array( $values );
+		else
+		{
+			foreach ($values as $key=>$value)
+			{
+				if ( ! is_scaler( $value ))
+					throw new \Exception( __METHOD__."(): Value['{$key}'] is of type ".getType( $value )
+						.'; the values to bind must all be scalers; cannot proceed.' );
+			}
+		}
 
 		// force an array re-indexing; if $values doesn't start at [0], presents an obscure error:
 		// "[<a href='pdostatement.execute'>pdostatement.execute</a>]:
@@ -1664,7 +1673,7 @@ abstract class CrudAbstract
 		( /*string*/ $basic_predicate, /*mixed*/ $basic_values,
 		  /*string*/ $supplemental_predicate, /*mixed*/ $supplemental_values=null )
 	{
-		if (! empty( $supplemental_predicate ))
+		if ( ! empty( $supplemental_predicate ))
 		{
 			$supplemental_predicate = trim( $supplemental_predicate );
 
@@ -1687,10 +1696,10 @@ abstract class CrudAbstract
 
 		// for simplicity, ensure the values (whatever they are) are arrays;
 		// we'll squeeze out any nulls when we're done.
-		if (! is_array( $basic_values ))
+		if ( ! is_array( $basic_values ))
 			$basic_values = array( $basic_values );
 
-		if (! is_array( $supplemental_values ))
+		if ( ! is_array( $supplemental_values ))
 			$supplemental_values = array( $supplemental_values );
 
 		$values = array_merge(	$basic_values, $supplemental_values );
@@ -1767,7 +1776,7 @@ abstract class CrudAbstract
 		$table  = self::our_class_name();
 
 		// if we haven't already got a db connection, get it now
-		if (!isSet( self::$db[ $module ] ))
+		if ( ! isSet( self::$db[ $module ] ))
 			// we're essentially building a copy of Connect's own $db[]; by using our module name
 			// as a key into ours, it's like *extremely* light-weight object management.
 			self::$db[ $module ] = Connect::db( $module, Connect::using_PDO );
@@ -1938,15 +1947,17 @@ abstract class CrudAbstract
  * if return fields vary programmatically). By contrast, this is a function that could as well be
  * named, "apply_sql_injection_attack_here()". Restrict its use to setup or admin-type stuff that
  * applies to a db as a whole with no user input.
+ *   Theoretically, you should be able to specify the module in the class as with other methods
+ * (eg, \Model\Production\Raw::sql(...) ), but php doesn't seem to register the contents of
+ * an ad-hoc derived Raw{} (ie, sees the class, but not the static function within).
  *
  * @param string $stmt   : a complete, valid, righteous SQL statement, with any embedded values
- * @param string $module : (optional) the "module" (eg, specific db connection) to use.
  * @return array
  * @throw exception : if PDO gets a non-PDO error
  */
 class Raw extends CrudAbstract
 {
-	public static /*array*/ function sql( /*string*/ $stmt, /*string*/ $module = Connect::DEFAULT_MODULE )
+	public static /*array*/ function sql( /*string*/ $stmt )
 	{
 		// check our params (as much as we can)
 		if (is_string( $stmt ) and is_string( $module ))
