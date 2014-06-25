@@ -1,6 +1,26 @@
 <?php
 /**
- * MySQL database connection singleton.
+ * Utility library/framework for DB access.
+ * - encourages you to segregate and organize specialized queries
+ * - basic CRUD operations built-in
+ * - small interface - just 7 basic functions (including an "UPSERT")
+ * - small, simple, and consistent parameter lists and function returns
+ * - intelligent parameter processing -- leave out what you don't need
+ * - supports nested transactions
+ * - errors handled exclusively via exceptions
+ * - individual connection logging with backtrace, programmatically controlled
+ * - supports multiple connections
+ * - uses parameter binding (positional)
+ * - caches queries
+ * - result set arrays will be returned associative-indexed by a particular key (where possible)
+ * - result "rows" can be returned as arrays or objects
+ * - namespaced for mutual protection
+ * - built-in autoloader
+ * - auto-generates temporary table classes (for prototyping or rare CRUD queries)
+ * - raw query pass-through
+ * - minimal install -- just this code file and a configuration file
+ * - better readability
+ * - lots of documentation (including PHPDoc) and examples
  *
  * @author Craige Norwood
  * @copyright 2010 onwards. All rights reserved.
@@ -177,7 +197,7 @@ spl_autoload_register( '\\'.__NAMESPACE__.'\\autoloader' );
 
 class Connect
 {
-	const version = 20140424;
+	const version = 20140625;
 
 	// to specify the adapter that will be used with the database
 	const using_MYSQL = 'MySQL';
@@ -593,10 +613,13 @@ class DB_resource
  *
  * Create a file (within your model's _tables sub-dir) whose class name is *exactly* that of the
  * target table. It should contain,
- *		namespace Model\_tables; // specify _tables to avoid a class name conflict with anything in Model
+ *
+ *		namespace Model\Tables; // specify Tables to avoid a class name conflict with anything in Model
  *		class Accounts extends \Model\CrudAbstract {} // class name must *exactly* match the table name
+ *
  * then, use (for example) as
  *		$record_set = \Model\Accounts::get(); // (you can namespace/use it for brevity)
+ *
  * You can do any pre-/post- processing by overriding any of the abstract CRUD functions and then
  * calling them as parent::...(). If you want to disable some function, simply provide an override
  * that does nothing. If you have a specialized query, call the abstract utility functions directly
@@ -610,16 +633,20 @@ class DB_resource
  * although you wouldn't be using any parent:: CRUD functions; they would call the abstract utility
  * functions directly. Of course, they could also call any classes in _tables as well (for trans-
  * actions containing simple inserts/updates, they *should*). They would begin as something like,
+ *
  *		namespace Model;
  *		class Accounting extends CrudAbstract { ... } // class name can be anything, even a table name
+ *
  * then, use (for example) as
  *		$record_set = \Model\Accounting::get(); // (you can namespace/use it for brevity)
  *
  * If you have multiple databases, specify them as "modules" (ie, create a sub-dir within Model,
  * with _tables as a sub-dir within *each* one of those module sub-dirs):
+ *
  *		namespace Model\my_module\_tables; // module name must *exactly* match the sub-dir name;
  *                   // specify _tables to avoid a class name conflict with anything in my_module
  *		class Account extends \Model\CrudAbstract {} // class name must *exactly* match the table name
+ *
  * then, use (for example) as
  *		$record_set = Model\my_module\Account::get(); // (you can namespace/use it for brevity)
  *
@@ -637,7 +664,7 @@ class DB_resource
  */
 abstract class CrudAbstract
 {
-	const version = 20140424;
+	const version = 20140625;
 
 	/**
 	 * Emits the DB query statement and values to the query log.
@@ -808,7 +835,7 @@ abstract class CrudAbstract
 	 *    This is the primary function for retrieving data; use get_field() when you want only a
 	 * single field from each record (it's just a convenience function). With either one, the
 	 * result is consistent; you always know what you're getting back. It'll always be an array
-	 * (even if it's empty), with each element being an assoc.array (from here) or a scaler (from
+	 * (even if it's empty), with each element being an assoc.array (from here) or a scalar (from
 	 * get_field).
 	 *    To avoid SQL-injection, we perform positional (as opposed to named) binding. Wherever
 	 * you want a value in the predicate, place a ? or %s as a placeholder instead. The values
@@ -865,7 +892,7 @@ abstract class CrudAbstract
 	 *    This is just a convenience function in lieu of get(); use this instead of get() when you
 	 * want only a single field from each record. With either, the result is consistent; you always
 	 * know what you're getting back. It'll always be an array (even if empty), with each element
-	 * being an assoc.array (from get() ) or a scaler (from here). One good application of this
+	 * being an assoc.array (from get() ) or a scalar (from here). One good application of this
 	 * would be constructing an HTML menu (the <option> statements).
 	 *    If you specify only the one field you want, returns a simple indexed array of those field
 	 * values; if you specify both the table's primary key field and the field you want (in that
@@ -1206,6 +1233,9 @@ abstract class CrudAbstract
 	 * in case you don't know or don't care of an existing record. The second parameter is for
 	 * any fields relevant only to an UPDATE; for example, a 'modified' timestamp, that you might
 	 * not want set on an INSERT.
+	 *   BTW, this presumes that a genuine key field exists and is included in the fields;
+	 * otherwise, there'll be nothing to match (or detect) an existing record, making an update
+	 * a *little* challenging. Ultimately, this is subject to MySQL's "ON DUPLICATE KEY" rules.
 	 *
 	 * @param array|object $stuff to add or update
 	 * @param array|object $update_only_stuff (optional; in case an UPDATE would require more/fewer fields)
@@ -1254,15 +1284,14 @@ abstract class CrudAbstract
 					$fields['Deleted'] = self::to_boolean( $fields['Deleted'] );
 
 
-				// we'll need these as-is for the UPDATE clause (UPDATE's fields will be a sub-set of INSERT's)
-				$UPDATE_fields = $INSERT_fields;
-
-
-				// resume work on the INSERT fields:
 				// separate any embedded db functions to ensure they'll be run by the server
 				$INSERT_function_fields = self::embedded_functions( $INSERT_fields );
 				// (at this point, $INSERT_fields may have shrunk a little if functions were removed.)
 
+				// we'll need these for the UPDATE clause (UPDATE's fields will be a sub-set of INSERT's)
+				$UPDATE_fields = $INSERT_fields;
+
+				// resume work on the INSERT fields:
 				// construct the INSERT clause of the statement
 				$stmt = "INSERT INTO {$table} SET ";
 				if (count( $INSERT_fields ) > 0) // then some simple values remain to be place-held
@@ -1281,7 +1310,7 @@ abstract class CrudAbstract
 				if (sizeOf( $UPDATE_fields ) > 0)
 				{
 					// filter some more: UPDATE fields are the same as for INSERT, except no keys are
-					// allowed (that's what we meant by being a sub-set above).
+					// allowed (that's what we meant by their being a sub-set above).
 					foreach (self::$db[ $module ]->tables[ $table ]->key_names as $key_name)
 					{
 						if (isSet( $UPDATE_fields[ $key_name ] )) // then it's a key; remove it
@@ -1291,22 +1320,19 @@ abstract class CrudAbstract
 
 					// separate any embedded db functions to ensure they'll be run by the server
 					$UPDATE_function_fields = $INSERT_function_fields;
-					foreach (self::$db[ $module ]->tables[ $table ]->key_names as $key_name)
-					{
-						if (isSet( $UPDATE_function_fields[ $key_name ] )) // then it's a key; remove it
-							unset( $UPDATE_function_fields[ $key_name ] );
-					}
 
 					if (count( $UPDATE_fields ) > 0) // then some simple values remain to be place-held
 					{
 						$UPDATE_values = array_values( $UPDATE_fields );
 						$UPDATE_fields = join( '=?, ', array_keys( $UPDATE_fields ) ) . '=?'; // creates 'field1=?, field2=?, ...'
-						$stmt .= " ON DUPLICATE KEY UPDATE {$UPDATE_fields}" . empty( $UPDATE_function_fields ) ? ' ' : ', ';
+						$stmt .= " ON DUPLICATE KEY UPDATE {$UPDATE_fields}"
+						      .  (empty( $UPDATE_function_fields ) ? ' ' : ", {$UPDATE_function_fields}");
 					}
-					else // all simple name/value pairss were filtered out; only db fns must remain
-						$UPDATE_values = array(); // so array_merge() won't get upset
+					elseif ( ! empty( $UPDATE_function_field )) // then no simple fields; just the function(s)
+						$stmt .= " ON DUPLICATE KEY UPDATE {$UPDATE_function_fields}" ;
 
-					$stmt .= $UPDATE_function_fields; // (btw, this might be empty)
+					else // all simple name/value pairs were filtered out, and there are no functions
+						$UPDATE_values = array(); // so array_merge() won't get upset
 
 					$values = array_merge( $INSERT_values, $UPDATE_values );
 				}
@@ -1481,9 +1507,9 @@ abstract class CrudAbstract
 		{
 			foreach ($values as $key=>$value)
 			{
-				if ( ! is_scaler( $value ))
+				if ( ! is_scalar( $value ))
 					throw new \Exception( __METHOD__."(): Value['{$key}'] is of type ".getType( $value )
-						.'; the values to bind must all be scalers; cannot proceed.' );
+						.'; the values to bind must all be scalars; cannot proceed.' );
 			}
 		}
 
@@ -1662,12 +1688,12 @@ abstract class CrudAbstract
 	 * required; if either pair has no value(s), then NULL should be specified in its place.
 	 *
 	 * @param string $basic_predicate
-	 * @param  mixed $basic_values : scaler or array (or null)
+	 * @param  mixed $basic_values : scalar or array (or null)
 	 * @param string $supplemental_predicate
-	 * @param  mixed $supplemental_values : scaler or array (or null)
+	 * @param  mixed $supplemental_values : scalar or array (or null)
 	 * @return array : 2 elements, as
 	 *                    final merged predicate
-	 *                    final concatenated values (scaler or array), basic first
+	 *                    final concatenated values (scalar or array), basic first
 	 */
 	protected static /*array*/ function predicate_merge
 		( /*string*/ $basic_predicate, /*mixed*/ $basic_values,
@@ -1712,7 +1738,7 @@ abstract class CrudAbstract
 				unset( $values[$v] );
 		}
 
-		if (is_array( $values) and sizeOf( $values ) < 2) // then un-array it (convert it to a scaler)
+		if (is_array( $values) and sizeOf( $values ) < 2) // then un-array it (convert it to a scalar)
 			$values = reset( $values ); // use just the value of the first (and only) element
 
 		return array( $predicate, $values );
@@ -1911,13 +1937,13 @@ abstract class CrudAbstract
  *    $predicate = ...::get( 'WHERE id'.IN( $ids )', $ids );
  * It's not within the class because having to specify the whole name would be too wordy,
  * and anyway our namespace should protect us from conflicts.
- *   Note that we'll accept a scaler just to be compatible, in case caller doesn't know what
+ *   Note that we'll accept a scalar just to be compatible, in case caller doesn't know what
  * they're sending us, but we draw the line at objects.
  *
- * @param   array|scaler $set : set of values
+ * @param   array|scalar $set : set of values
  * @return string             : of the form ' IN (?,?,...)'
  */
-/*string*/ function in( /*array|scaler*/ $set )
+/*string*/ function in( /*array|scalar*/ $set )
 {
 	if (is_array( $set ))
 	{
