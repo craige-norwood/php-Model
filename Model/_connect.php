@@ -197,7 +197,7 @@ spl_autoload_register( '\\'.__NAMESPACE__.'\\autoloader' );
 
 class Connect
 {
-	const version = 20140625;
+	const version = 20140708;
 
 	// to specify the adapter that will be used with the database
 	const using_MYSQL = 'MySQL';
@@ -664,7 +664,7 @@ class DB_resource
  */
 abstract class CrudAbstract
 {
-	const version = 20140625;
+	const version = 20140708;
 
 	/**
 	 * Emits the DB query statement and values to the query log.
@@ -1446,6 +1446,7 @@ abstract class CrudAbstract
 			if ($PDOstmt->errorCode() == 0)
 			{
 				// fetch the details about the fields (and hang onto them)
+				self::$db[ $module ]->tables = array( $table=>new stdClass );
 				self::$db[ $module ]->tables[ $table ]->field_properties = $PDOstmt->fetchAll( \PDO::FETCH_NUM );
 				// it'll be an indexed array of indexed arrays
 
