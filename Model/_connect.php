@@ -943,6 +943,13 @@ abstract class CrudAbstract
 
 		// we're friendly & flexible with parameters to us, so figure what we actually got
 		list( $fields, $predicate, $values ) = self::filter_args( func_get_args() );
+		$fields_array = explode( ',', $fields );
+		switch (count( $fields_array ))
+		{
+			case 0  : throw new \Exception( __METHOD__.'( '.func_get_args().' ): need at least one field (column) name to retrieve' );
+			case 1  : $target_field = trim( $fields_array[0] ); break;
+			default : $target_field = trim( $fields_array[1] ); // [0] would be the pk to index by
+		}
 
 		if ($table != 'CrudAbstract') // then jusat a normal call from a class extension
 			//convert any predicate placeholders from sprintf (%s) to unnamed ODBC (?) and append
@@ -955,9 +962,7 @@ abstract class CrudAbstract
 
 		// perform the actual query (returns an indexed array[0..oo] of assoc.arrays or objects)
 		// and then try to compress it and re-index it by a primary key
-		return self::reindex_by_pk( self::select( $stmt, $values ) );
-
-		return $record_set;
+		return self::reindex_by_pk( self::select( $stmt, $values ), $target_field );
 	} // get_field()
 
 
@@ -1609,72 +1614,60 @@ abstract class CrudAbstract
 	 * (you don't actually support a pk of 0, right? RIGHT?). But we presume you would already know
 	 * if a "candidate" field (even a genuine pk) would present unique values in a result set.
 	 *
-	 * @param array $record_set
+	 * @param array  $record_set
+	 * @param string $target_field : optional; used by get_field() to indicate just the one field to return
 	 * @return array
 	 */
-	protected static /*array*/ function reindex_by_pk( array $record_set )
+	protected static /*array*/ function reindex_by_pk( array $record_set, /*string*/ $target_field=null )
 	{
 		if (sizeOf( $record_set ) > 0) // then the select found something
 		{
-			// first, let's take stock of the situation:
+			$record_set_by_pk = array(); // will receive $record_set as an assoc.array, indexed by pk
+			$records_are_objects = is_object( $record_set[0] ); // look at the first record as a sample
 
-			$sample_record = $record_set[0]; // (just a convenience)
-			$records_are_objects = is_object( $sample_record );
-
-			if ($records_are_objects) // ooooooh, somebody changed the default form...
-			{
-				unset( $sample_record ); // unlink from $record_set[0]
-				$sample_record = get_object_vars( $record_set[0] ); // we need to play with it as an array
-			}
-
+			$sample_record = $records_are_objects ? get_object_vars( $record_set[0] ) : $record_set[0];
 			$first_field = each( $sample_record ); // fetch the key & value of a record (we may want the type)
-			$pk_field = $first_field['key']; // (just a convenience)
+			$pk_field = $first_field['key']; // (might not be the *actual* pk, but it's what they specified)
 
-			$record_set_by_pk = array();
+			if (is_string( $target_field )) // then we want just that field (ie, it's from get_field() )
+			{
+				$record_set_by_index = array(); // compressed $record_set (just in case of non-unique keys)
 
-			// ok, so what can we do?
-
-			if (sizeOf( $sample_record ) > 1) // then there's more than one field,
+				if ($records_are_objects) // then access the pk & target as properties
+				{
+					foreach ($record_set as $record)
+					{
+						$record_set_by_pk[ $record->$pk_field ] = $record->$target_field;
+						$record_set_by_index[] = $record->$target_field;
+					}
+				}
+				else // it's an array; access the pk & target as elements
+				{
+					foreach ($record_set as $record)
+					{
+						$record_set_by_pk[ $record[ $pk_field ] ] = $record[ $target_field ];
+						$record_set_by_index[] = $record[ $target_field ];
+					}
+				}
+			}
+			else // we want the entire record (ie, it's from get() ), even if it has only one field
 			{
 				if ($records_are_objects) // then access the pk as a property
+				{
 					foreach ($record_set as $record)
 						$record_set_by_pk[ $record->$pk_field ] = $record;
-
-				else // access the pk as an element
+				}
+				else // it's an array; access the pk as an element
+				{
 					foreach ($record_set as $record)
 						$record_set_by_pk[ $record[ $pk_field ] ] = $record;
-
-				// make sure we haven't lost anything (non-unique keys would overwrite elements);
-				// if anything would be lost, just return with the indexing as-is
-				return sizeOf( $record_set_by_pk ) == sizeOf( $record_set ) ? $record_set_by_pk : $record_set;
+				}
+				$record_set_by_index = $record_set; // (just a convenience for the test below)
 			}
 
-			else // then the pk field is the *only* field, and we'll try it (yes, we have a plan B)
-			{
-				if ($records_are_objects) // then access the pk as a property
-					foreach ($record_set as $record)
-					{
-						$record_set_by_pk[ $record->$pk_field ] = $record->$pk_field;
-
-						// in case the pk proves non-unique and we can't use the above, at least
-						// we can compress the original to a simple array of values; get it ready
-						$record = $record->$pk_field;
-					}
-
-				else // access the pk as an element
-					foreach ($record_set as $record)
-					{
-						$record_set_by_pk[ $record[ $pk_field ] ] = $record[ $pk_field ];
-
-						// in case the pk proves non-unique and we can't use the above, at least
-						// we can compress the original to a simple array of values; get it ready
-						$record = $record[ $pk_field ];
-					}
-
-				// make sure we haven't lost anything (non-unique keys would overwrite elements);
-				// if anything would be lost, just return the compressed version with indexing as-is
-				return sizeOf( $record_set_by_pk ) == sizeOf( $record_set ) ? $record_set_by_pk : $record_set;
-			}
+			// make sure we haven't lost anything (non-unique keys would overwrite elements);
+			// if anything would be lost, just return the compressed version with indexing as-is
+			return sizeOf( $record_set_by_pk ) == sizeOf( $record_set_by_index ) ? $record_set_by_pk : $record_set_by_index;
 		}
 		else // empty -- nothing found
 			return $record_set;
