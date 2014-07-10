@@ -197,7 +197,7 @@ spl_autoload_register( '\\'.__NAMESPACE__.'\\autoloader' );
 
 class Connect
 {
-	const version = 20140708;
+	const version = 20140710;
 
 	// to specify the adapter that will be used with the database
 	const using_MYSQL = 'MySQL';
@@ -664,7 +664,7 @@ class DB_resource
  */
 abstract class CrudAbstract
 {
-	const version = 20140708;
+	const version = 20140710;
 
 	/**
 	 * Emits the DB query statement and values to the query log.
@@ -1513,7 +1513,7 @@ abstract class CrudAbstract
 		{
 			foreach ($values as $key=>$value)
 			{
-				if ( ! is_scalar( $value ))
+				if ( ! is_scalar( $value ) and ! is_null( $value ))
 					throw new \Exception( __METHOD__."(): Value['{$key}'] is of type ".getType( $value )
 						.'; the values to bind must all be scalars; cannot proceed.' );
 			}
