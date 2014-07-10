@@ -1016,8 +1016,18 @@ abstract class CrudAbstract
 	/**
 	 * Perform an INSERT query (ie, data should not already exist). As a convenience, any irrelevant
 	 * fields will automatically be excluded.
+	 *    Normally, you supply an assoc.array whose keys are the field names and values are those
+	 * to insert (the preferred manner). However, if you need to insert multiple records at a time,
+	 * you may specify a list of field names as a comma-separated string (just like with get() )
+	 * followed by an array of values. Each new record's values should be gathered into an array,
+	 * all enclosed within a larger array:
+	 *    $values = array(  array( 1,2,3 ),  array( 4,5,6 ), etc ) ;
+	 *    ...::insert( 'alpha, beta, gamma', $values );
+	 * would insert a record with those fields containing 1, 2, & 3 respectively, then another
+	 * with 4, 5, & 6, etc.
 	 *
-	 * @param array|object $stuff to add
+	 * @param assoc.array|object|string $stuff to add (or a list of field names as CSV)
+	 * @param array | optional; use only if $stuff is a CSV-string of field names
 	 * @return int key of new record (not guaranteed!)
 	 * Any exception raised by a connection failure will simply bubble up to our caller.
 	 */
@@ -1025,53 +1035,86 @@ abstract class CrudAbstract
 	{
 		list( $module, $table ) = self::check_setup();
 
-		if ($table != 'CrudAbstract') // then jusat a normal call from a class extension
+		if ($table != 'CrudAbstract') // then just a normal call from a class extension
 		{
-			if (is_object( $stuff ))
-				$stuff = get_object_vars( $stuff );
-			elseif ( ! is_array( $stuff ))
-				throw new \Exception( __METHOD__.'( stuff : '.getType( $stuff ).' ): parameter must be an array or an object' );
-
-
-			// filter out any fields that aren't members of this table (db server gets *very* upset...).
-			self::field_names();
-			$fields = array();
-			foreach (self::$db[ $module ]->tables[ $table ]->all_names as $field_name)
+			$args = func_get_args();
+			if (is_string( $args[0] ) and is_array( $args[1] )) // then it's (fields) VALUES (values) format
 			{
-				if (isSet( $stuff[ $field_name ] )) // then it's a bona-fide field of this table
-					$fields[ $field_name ] = $stuff[ $field_name ]; // include it in the data list we're constructing
-			//	else, it's unrelated to this table; omit it from the data list
-			}
+				$fields = $args[0]; // expecting a csv list of field names
+				$values = $args[1]; // expecting an array (possibly of arrays)
 
+				// look at the first element: Is it an array itself, or just a scalar?
+				$sample = reset( $values );
+				if (is_scalar( $sample ) or is_null( $sample )) // then a single record to insert
+					$placeholders = '(' . join( ',', array_fill( 0, count( $values ), '?' )  . ')');
 
-			$values = null; // so execute() won't get upset
-			if (sizeOf( $fields ) > 0)
-			{
-				// force these guys to boolean
-				if (isSet( $fields['Active'] ))
-					$fields['Active'] = self::to_boolean( $fields['Active'] );
-
-				if (isSet( $fields['Deleted'] ))
-					$fields['Deleted'] = self::to_boolean( $fields['Deleted'] );
-
-
-				// separate any embedded db functions from placeholder treatment to ensure they'll be run
-				$function_fields = self::embedded_functions( $fields );
-				// (at this point, $fields may have shrunk a little if functions were removed.)
-
-				if (count( $fields ) > 0) // then some simple values remain to be place-held
+				elseif (is_array( $sample )) // then there are multiple records to insert
 				{
-					$values = array_values( $fields );
-					$fields = join( '=?, ', array_keys( $fields ) ).'=?'; // creates 'field1=?, field2=?, ...'
-					$stmt = "INSERT INTO {$table} SET {$fields}";
-					if ( ! empty( $function_fields )) // append the db function fields (need a comma between)
-						$stmt .= ", {$function_fields}";
+					$all_record_values = array();
+					$record_placeholders = array();
+					foreach ($values as $record_values)
+					{
+						$record_placeholders[] = join( ',', array_fill( 0, count( $record_values ), '?' ) );
+						$all_record_values = array_merge( $all_record_values, $record_values );
+					}
+
+					$placeholders = '('.join( '),(', $record_placeholders ).')';
+					$values = $all_record_values;
 				}
-				else // all simple name/values filtered out; only db fns must remain
-					$stmt = "INSERT INTO {$table} SET {$function_fields}";
+				else
+					throw new \Exception( __METHOD__.'( stuff : '.getType( $stuff ).' ): I do not understand what you want to insert' );
+
+				$stmt = "INSERT INTO {$table} ({$fields}) VALUES {$placeholders}";
 			}
-			else // no explicit fields; create the record with all defaults
-				$stmt = "INSERT INTO {$table} () VALUES ()";
+
+			else // it's field=value format
+			{
+				if (is_object( $stuff ))
+					$stuff = get_object_vars( $stuff );
+				elseif ( ! is_array( $stuff ))
+					throw new \Exception( __METHOD__.'( stuff : '.getType( $stuff ).' ): I do not understand what you want to insert' );
+
+
+				// filter out any fields that aren't members of this table (db server gets *very* upset...).
+				self::field_names();
+				$fields = array();
+				foreach (self::$db[ $module ]->tables[ $table ]->all_names as $field_name)
+				{
+					if (isSet( $stuff[ $field_name ] )) // then it's a bona-fide field of this table
+						$fields[ $field_name ] = $stuff[ $field_name ]; // include it in the data list we're constructing
+				//	else, it's unrelated to this table; omit it from the data list
+				}
+
+
+				$values = null; // so execute() won't get upset
+				if (sizeOf( $fields ) > 0)
+				{
+					// force these guys to boolean
+					if (isSet( $fields['Active'] ))
+						$fields['Active'] = self::to_boolean( $fields['Active'] );
+
+					if (isSet( $fields['Deleted'] ))
+						$fields['Deleted'] = self::to_boolean( $fields['Deleted'] );
+
+
+					// separate any embedded db functions from placeholder treatment to ensure they'll be run
+					$function_fields = self::embedded_functions( $fields );
+					// (at this point, $fields may have shrunk a little if functions were removed.)
+
+					if (count( $fields ) > 0) // then some simple values remain to be place-held
+					{
+						$values = array_values( $fields );
+						$fields = join( '=?, ', array_keys( $fields ) ).'=?'; // creates 'field1=?, field2=?, ...'
+						$stmt = "INSERT INTO {$table} SET {$fields}";
+						if ( ! empty( $function_fields )) // append the db function fields (need a comma between)
+							$stmt .= ", {$function_fields}";
+					}
+					else // all simple name/values filtered out; only db fns must remain
+						$stmt = "INSERT INTO {$table} SET {$function_fields}";
+				}
+				else // no explicit fields; create the record with all defaults
+					$stmt = "INSERT INTO {$table} () VALUES ()";
+			}
 		}
 		else // we were called directly! just pass it thru as-is (they're on their own)
 		{
