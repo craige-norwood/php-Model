@@ -315,6 +315,7 @@ class Connect
 	/**
 	 * @param string $module_name : (optional)
 	 * @param string $adapter     : (optional) MySQL, MySQLi, PDO (default), or ADOdb
+	 * @throws Exception if there's a problem with the configuration parameters
 	 */
 	private function __construct( /*string*/ $module_name=self::DEFAULT_MODULE, /*string*/ $adapter=self::using_PDO )
 	{
@@ -438,6 +439,7 @@ class DB_resource
 	/**
 	 * @param stdClass $config
 	 * @param string   $adapter
+	 * @throws Exception
 	 */
 	public function __construct( \stdClass $config, /*string*/ $adapter=Connect::using_PDO )
 	{
@@ -522,13 +524,18 @@ class DB_resource
 				     . ( isSet( $config->db->name ) ? "dbname={$config->db->name}" : '' );
 
 				$this->conn = new \PDO( $dsn, $config->db->user, $config->db->password );
-				// failure will raise a PDOException
+				// connection failure will raise a PDOException
+
+				if ( ! $this->conn->setAttribute( \PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION )) // then must raise an exception manually
+					throw new Exception( 'Failed on PDO::setAttribute( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION ); check server error log' );
+				// now, so will (almost) everything else
 
 				// test it:
-				$PDOstmt = $this->conn->prepare( "SHOW DATABASES" );
+				if ( ! $PDOstmt = $this->conn->prepare( 'SHOW DATABASES' )) // then must raise an exception manually
+					throw new Exception( 'Failed on PDO::prepare() connection test; check server error log' );
+
 				$PDOstmt->execute();
-				if ($PDOstmt->errorCode() != '00000')
-					throw new \Exception( "connection test failed; error code ".$PDOstmt->errorCode()."." );
+				// execute() failure will raise a PDOException
 
 				break;
 			}
@@ -861,7 +868,7 @@ abstract class CrudAbstract
 	 * @param int|string|array $values to apply to placeholders above, if any.
 	 *		a single value may be specified as-is; two or more must be within an indexed array.
 	 * @return array
-	 * Any exception raised by a connection failure will simply bubble up to our caller.
+	 * @throws Exception (well, relays it, really)
 	 */
 	public static /*array*/ function get( /* string $fields='*', string $predicate=null, mixed $values=null */ )
 	{
@@ -880,9 +887,16 @@ abstract class CrudAbstract
 			$values = $predicate;
 		}
 
+		try
+		{
 		// perform the actual query (returns an indexed array[0..oo] of assoc.arrays or objects)
 		// and then try to re-index it by a primary key
-		return self::reindex_by_pk( self::select( $stmt, $values ) );
+			return self::reindex_by_pk( self::select( $stmt, $values ) );
+		}
+		catch (\Exception $exc)
+		{
+			throw new \Exception( __METHOD__.'() :'.$exc->getMessage() );
+		}
 	} // get()
 
 
@@ -934,7 +948,7 @@ abstract class CrudAbstract
 	 * @param int|string|array $values to apply to placeholders above, if any.
 	 *		a single value may be specified as-is; two or more must be within an indexed array.
 	 * @return array
-	 * Any exception raised by a connection failure will simply bubble up to our caller.
+	 * @throws Exception (well, relays it, really)
 	 */
 	public static /*array*/ function get_field( /* string $fields='*', string $predicate=null, mixed $values=null */ )
 	{
@@ -960,9 +974,16 @@ abstract class CrudAbstract
 			$values = $predicate;
 		}
 
+		try
+		{
 		// perform the actual query (returns an indexed array[0..oo] of assoc.arrays or objects)
 		// and then try to compress it and re-index it by a primary key
-		return self::reindex_by_pk( self::select( $stmt, $values ), $target_field );
+			return self::reindex_by_pk( self::select( $stmt, $values ), $target_field );
+		}
+		catch (\Exception $exc)
+		{
+			throw new \Exception( __METHOD__.'() :'.$exc->getMessage() );
+		}
 	} // get_field()
 
 
@@ -975,7 +996,7 @@ abstract class CrudAbstract
 	 * @param string $predicate with either %s or ? as embedded placeholders (optional)
 	 * @param array $values to apply to placeholders above, if any
 	 * @return int
-	 * Any exception raised by a connection failure will simply bubble up to our caller.
+	 * @throws Exception (well, relays it, really)
 	 */
 	public static /*int*/ function count( /* string $predicate=null, mixed $values=null */ )
 	{
@@ -994,22 +1015,29 @@ abstract class CrudAbstract
 			$values = $predicate;
 		}
 
-		// perform the actual query (returns an indexed array[0..oo] of assoc.arrays)
-		$record_set = self::select( $stmt, $values );
-
-		if (isSet( $record_set[0] ))
+		try
 		{
-			$record = $record_set[0]; // (just a convenience)
-			// we know the target field will be "qty" because, well, we named it above.
-			if (is_array( $record ))
-				return intVal( $record['qty'] );
-			elseif (is_object( $record ))
-				return intVal( $record->qty );
-			else // wtf???
+		// perform the actual query (returns an indexed array[0..oo] of assoc.arrays)
+			$record_set = self::select( $stmt, $values );
+
+			if (isSet( $record_set[0] ))
+			{
+				$record = $record_set[0]; // (just a convenience)
+				// we know the target field will be "qty" because, well, we named it above.
+				if (is_array( $record ))
+					return intVal( $record['qty'] );
+				elseif (is_object( $record ))
+					return intVal( $record->qty );
+				else // wtf???
+					return 0;
+			}
+			else // uh oh...
 				return 0;
 		}
-		else // uh oh...
-			return 0;
+		catch (\Exception $exc)
+		{
+			throw new \Exception( __METHOD__.'() :'.$exc->getMessage() );
+		}
 	} // count()
 
 
@@ -1029,7 +1057,7 @@ abstract class CrudAbstract
 	 * @param assoc.array|object|string $stuff to add (or a list of field names as CSV)
 	 * @param array | optional; use only if $stuff is a CSV-string of field names
 	 * @return int key of new record (not guaranteed!)
-	 * Any exception raised by a connection failure will simply bubble up to our caller.
+	 * @throws Exception (well, relays it, really)
 	 */
 	public static /*int*/ function insert( /*array | object*/ $stuff )
 	{
@@ -1123,20 +1151,20 @@ abstract class CrudAbstract
 		}
 
 
-		$PDOstmt = self::prepared_statement( $stmt, $module );
-
-		// bind the values to their placeholders and perform the query
-		$PDOstmt->execute( $values );
-
-		self::log_query( $PDOstmt, $values );
-
-		if ($PDOstmt->errorCode() > 0)
+		try // bind the values to their placeholders and perform the query
 		{
-			$errorInfo = $PDOstmt->errorInfo();
-			throw new \Exception( $errorInfo[2] );
-		}
+			$PDOstmt = self::prepared_statement( $stmt, $module );
+			$PDOstmt->execute( $values );
 
-		return self::$db[ $module ]->conn->lastInsertId();
+			self::log_query( $PDOstmt, $values );
+
+			return self::$db[ $module ]->conn->lastInsertId();
+		}
+		catch (Exception $exc)
+		{
+			self::log_query( $PDOstmt, $values );
+			throw new \Exception( __METHOD__.'() :'.$exc->getMessage() );
+		}
 	} // insert()
 
 
@@ -1150,7 +1178,7 @@ abstract class CrudAbstract
 	 * @param int|string|array $values to apply to placeholders above, if any.
 	 *		a single value may be specified as-is; two or more must be within an indexed array.
 	 * @return int key of new record (not guaranteed!)
-	 * Any exception raised by a connection failure will simply bubble up to our caller.
+	 * @throws Exception (well, relays it, really)
 	 */
 	public static /*int*/ function update( /*array | object*/ $stuff, /*string*/ $predicate = null, /*mixed*/ $values = null )
 	{
@@ -1257,22 +1285,22 @@ abstract class CrudAbstract
 		}
 
 
-		$PDOstmt = self::prepared_statement( $stmt, $module );
-		$values = array_merge( $values, $predicate_values );
-
-		// bind the values to their placeholders and perform the query.
-		// (they're listed twice; once for the INSERT clause and once for the ON DUP clause)
-		$PDOstmt->execute( $values );
-
-		self::log_query( $PDOstmt, $values );
-
-		if ($PDOstmt->errorCode() > 0)
+		try // bind the values to their placeholders and perform the query
 		{
-			$errorInfo = $PDOstmt->errorInfo();
-			throw new \Exception( $errorInfo[2] );
-		}
+			$PDOstmt = self::prepared_statement( $stmt, $module );
+			$values = array_merge( $values, $predicate_values );
 
-		return $PDOstmt->rowCount();
+			$PDOstmt->execute( $values );
+
+			self::log_query( $PDOstmt, $values );
+
+			return $PDOstmt->rowCount();
+		}
+		catch (Exception $exc)
+		{
+			self::log_query( $PDOstmt, $values );
+			throw new \Exception( __METHOD__.'() :'.$exc->getMessage() );
+		}
 	} // update()
 
 
@@ -1289,7 +1317,7 @@ abstract class CrudAbstract
 	 * @param array|object $update_only_stuff (optional; in case an UPDATE would require more/fewer fields)
 	 *			 usable only if the pk is included (otherwise, there's no key to test against, right?)
 	 * @return int key of new record
-	 * Any exception raised by a connection failure will simply bubble up to our caller.
+	 * @throws Exception (well, relays it, really)
 	 */
 	public static /*int*/ function put( /*array | object*/ $stuff, /*array | object*/ $update_only_stuff=array() )
 	{	// (type hint 'array' above is commented out for compatibility with any put() that overloads us.)
@@ -1400,21 +1428,20 @@ abstract class CrudAbstract
 		}
 
 
-		$PDOstmt = self::prepared_statement( $stmt, $module );
+		try // bind the values to their placeholders and perform the query
+		{	// (remember, they're listed twice; once for the INSERT clause and once for the ON DUP UPDATE clause)
+			$PDOstmt = self::prepared_statement( $stmt, $module );
+			$PDOstmt->execute( $values );
 
-		// bind the values to their placeholders and perform the query.
-		// (remember, they're listed twice; once for the INSERT clause and once for the ON DUP UPDATE clause)
-		$PDOstmt->execute( $values );
+			self::log_query( $PDOstmt, $values );
 
-		if ($PDOstmt->errorCode() > 0)
-		{
-			$errorInfo = $PDOstmt->errorInfo();
-			throw new \Exception( $errorInfo[2] );
+			return self::$db[ $module ]->conn->lastInsertId();
 		}
-
-		self::log_query( $PDOstmt, $values );
-
-		return self::$db[ $module ]->conn->lastInsertId();
+		catch (Exception $exc)
+		{
+			self::log_query( $PDOstmt, $values );
+			throw new \Exception( __METHOD__.'() :'.$exc->getMessage() );
+		}
 	} // put()
 
 
@@ -1424,7 +1451,7 @@ abstract class CrudAbstract
 	 * @param string $predicate with either %s or ? as embedded placeholders (optional)
 	 * @param array $values to apply to placeholders above, if any
 	 * @return int the quantity of rows deleted
-	 * Any exception raised by a connection failure will simply bubble up to our caller.
+	 * @throws Exception (well, relays it, really)
 	 */
 	public static /*int*/ function delete( /*string*/ $predicate = null, /*mixed*/ $values = null )
 	{
@@ -1442,20 +1469,21 @@ abstract class CrudAbstract
 			$values = $predicate;
 		}
 
-		$PDOstmt = self::prepared_statement( $stmt, $module );
 
-		// bind any values to their placeholders and perform the query
-		$PDOstmt->execute( $values );
-
-		self::log_query( $PDOstmt, $values );
-
-		if ($PDOstmt->errorCode() > 0)
+		try // bind the values to their placeholders and perform the query
 		{
-			$errorInfo = $PDOstmt->errorInfo();
-			throw new \Exception( $errorInfo[2] );
-		}
+			$PDOstmt = self::prepared_statement( $stmt, $module );
+			$PDOstmt->execute( $values );
 
-		return $PDOstmt->rowCount();
+			self::log_query( $PDOstmt, $values );
+
+			return $PDOstmt->rowCount();
+		}
+		catch (Exception $exc)
+		{
+			self::log_query( $PDOstmt, $values );
+			throw new \Exception( __METHOD__.'() :'.$exc->getMessage() );
+		}
 	} // delete()
 
 //	Protected --------------------------------------------------------------------------------------
@@ -1494,7 +1522,7 @@ abstract class CrudAbstract
 			if ($PDOstmt->errorCode() == 0)
 			{
 				// fetch the details about the fields (and hang onto them)
-				self::$db[ $module ]->tables = array( $table=>new stdClass );
+				self::$db[ $module ]->tables = array( $table=>new \stdClass );
 				self::$db[ $module ]->tables[ $table ]->field_properties = $PDOstmt->fetchAll( \PDO::FETCH_NUM );
 				// it'll be an indexed array of indexed arrays
 
@@ -1541,7 +1569,7 @@ abstract class CrudAbstract
 	 * @param string $stmt : SELECT query with optional ? placeholders
 	 * @param mixed $values : a scalar or an array to fill in the placeholders with
 	 * @return array
-	 * @throw exception : if PDO gets a non-PDO error
+	 * @throws Exception
 	 */
 	protected static /*array*/ function select( /*string*/ $stmt, /*array*/ $values =  null )
 	{
@@ -1557,20 +1585,21 @@ abstract class CrudAbstract
 			foreach ($values as $key=>$value)
 			{
 				if ( ! is_scalar( $value ) and ! is_null( $value ))
-					throw new \Exception( __METHOD__."(): Value['{$key}'] is of type ".getType( $value )
+					throw new \Exception( "The value for '{$key}' is of type ".getType( $value )
 						.'; the values to bind must all be scalars; cannot proceed.' );
 			}
 		}
 
-		// force an array re-indexing; if $values doesn't start at [0], presents an obscure error:
-		// "[<a href='pdostatement.execute'>pdostatement.execute</a>]:
-		//  SQLSTATE[HY093]: Invalid parameter number: parameter was not defined in..."
-		$PDOstmt->execute( array_values( $values ) );
-
-		self::log_query( $PDOstmt, $values );
-
-		if ($PDOstmt->errorCode() == 0) // then no errors occurred; fetch the goods:
+		try
 		{
+			// the array_values() will force an array re-indexing; if $values doesn't start at [0],
+			// presents an obscure error:
+			//   [<a href='pdostatement.execute'>pdostatement.execute</a>]:
+			//   SQLSTATE[HY093]: Invalid parameter number: parameter was not defined in...
+			$PDOstmt->execute( array_values( $values ) );
+
+			self::log_query( $PDOstmt, $values );
+
 			$record_set = $PDOstmt->fetchAll( \PDO::FETCH_ASSOC );
 
 			// sanitize each value to prevent front-side script injection: first, negate any UTF8
@@ -1604,10 +1633,10 @@ abstract class CrudAbstract
 
 			return is_null( $record_set ) ? array() : $record_set;
 		}
-		else // PDO encountered a non-PDO error of some sort; let's convert it to an exception:
+		catch (Exception $exc)
 		{
-			$errorInfo = $PDOstmt->errorInfo();
-			throw new \Exception( $errorInfo[2] );
+			self::log_query( $PDOstmt, $values );
+			throw $exc;
 		}
 	} // select()
 
@@ -1622,6 +1651,7 @@ abstract class CrudAbstract
 	 * @param string $stmt   : a complete, valid, righteous SQL statement, with any embedded values
 	 * @param string $module : (optional) the "module" (eg, specific db connection) to use.
 	 * @return PDOStatement
+	 * @throws Exception on PDO prepare() failure
 	 */
 	protected static /*PDOStatement*/ function prepared_statement
 		( /*string*/ $stmt, /*string*/ $module = Connect::DEFAULT_MODULE )
@@ -1633,8 +1663,10 @@ abstract class CrudAbstract
 
 		else // create & stash it for next time
 		{
-			$PDOstmt = self::$db[ $module ]->conn->prepare( $stmt );
-			self::$db[ $module ]->prepared_statements[ $stmt_key ] = $PDOstmt;
+			if ( ! $PDOstmt = self::$db[ $module ]->conn->prepare( $stmt )) // then must raise an exception manually
+				throw new Exception( 'PDO::prepare() failed; check server error log' );
+
+			self::$db[ $module ]->prepared_statements[ $stmt_key ] = $PDOstmt; // save it for next time
 		}
 		return $PDOstmt;
 	} // prepared_statement()
@@ -2016,7 +2048,7 @@ abstract class CrudAbstract
  *
  * @param string $stmt   : a complete, valid, righteous SQL statement, with any embedded values
  * @return array
- * @throw exception : if PDO gets a non-PDO error
+ * @throws Exception : if PDO gets a non-PDO error
  */
 class Raw extends CrudAbstract
 {
