@@ -181,7 +181,7 @@ function autoloader( $classname )
 			      . "class {$classname} extends \\".__NAMESPACE__.'\\CrudAbstract {}';
 
 			// inject it into a file...
-			$tmp_name = tempNam( '', '' );
+			$tmp_name =  tempNam( '', "{$classname}_" );
 			file_put_contents( $tmp_name, $code );
 
 			// ...and reel it back in (oh, the lengths we'll go to)
@@ -197,7 +197,7 @@ spl_autoload_register( '\\'.__NAMESPACE__.'\\autoloader' );
 
 class Connect
 {
-	const version = 20140710;
+	const version = 20140716;
 
 	// to specify the adapter that will be used with the database
 	const using_MYSQL = 'MySQL';
@@ -671,7 +671,7 @@ class DB_resource
  */
 abstract class CrudAbstract
 {
-	const version = 20140710;
+	const version = 20140716;
 
 	/**
 	 * Emits the DB query statement and values to the query log.
@@ -1083,7 +1083,7 @@ abstract class CrudAbstract
 					foreach ($values as $record_values)
 					{
 						$record_placeholders[] = join( ',', array_fill( 0, count( $record_values ), '?' ) );
-						$all_record_values = array_merge( $all_record_values, $record_values );
+						$all_record_values = array_merge( $all_record_values, array_values( $record_values ) );
 					}
 
 					$placeholders = '('.join( '),(', $record_placeholders ).')';
@@ -1208,44 +1208,31 @@ abstract class CrudAbstract
 			self::field_names();
 			$key_names  = self::$db[ $module ]->tables[ $table ]->key_names;
 			$data_names = self::$db[ $module ]->tables[ $table ]->data_names;
+			$all_names  = self::$db[ $module ]->tables[ $table ]->all_names;
+
 			$fields = array();
+
 			if (is_null( $predicate )) // then we'll try to construct one from their supplied data ($stuff)
 			{	// (btw, for simplicity, we'll process it later as if it was from the user)
 				$predicate = 'WHERE'; $values = array();
 
-				foreach ($key_names as $field_name)
+				foreach ($stuff as $name=>$value)
 				{
-					if (isSet( $stuff[ $field_name ] )) // then it's a bona-fide key of this table
-					{	// we'll add this key to the predicate, but omit it from the data list
-						$predicate .= " {$field_name}=?";
-						$values[]   = $stuff[ $field_name ];
+					if (array_search( $name, $all_names )) // then it's a field of this table
+					{
+						$predicate .= " {$name}=?";
+						$values[]   = $value;
 					}
 				}
-
-				foreach ($data_names as $field_name)
-				{
-					if (isSet( $stuff[ $field_name ] )) // then it's a bona-fide non-key field of this table
-						// just include it in the data list we're constructing
-						$fields[ $field_name ] = $stuff[ $field_name ];
-				}
-
-				if (sizeOf( $fields ) == 0)
-					throw new \Exception( __METHOD__.'(): no relevant data was found with which to update the record' );
-				if (sizeOf( $values ) == 0)
-					throw new \Exception( __METHOD__.'(): no keys were found to indicate which record to update' );
 			}
 			else // we'll rely exclusively on their supplied predicate
 			{	// cull any keys and un-related data from their supplied data ($stuff)
-				foreach ($data_names as $field_name)
+				foreach ($stuff as $name=>$value)
 				{
-					if (isSet( $stuff[ $field_name ] )) // then it's a bona-fide non-key field of this table
-						// just include it in the data list we're constructing
-						$fields[ $field_name ] = $stuff[ $field_name ];
+					if (array_search( $name, $all_names ) ) // then it's a field of this table
+						$fields[ $name ] = $value;
 				}
-				if (sizeOf( $fields ) == 0)
-					throw new \Exception( __METHOD__.'(): no relevant data was found with which to update the record' );
 			}
-
 
 			if (sizeOf( $fields ) > 0)
 			{
@@ -1276,7 +1263,7 @@ abstract class CrudAbstract
 				$stmt .= "{$function_fields} " . str_replace( '%s', '?', $predicate );
 			}
 			else // no explicit fields to update; not much to do...
-				return 0; // well, no rows were affected, right?
+				throw new \Exception( __METHOD__.'(): no relevant keys or data was found with which to update the record' );
 		}
 		else // we were called directly! just pass it thru as-is (they're on their own)
 		{
