@@ -1936,11 +1936,8 @@ abstract class CrudAbstract
  * if return fields vary programmatically). By contrast, this is a function that could as well be
  * named, "apply_sql_injection_attack_here()". Restrict its use to setup or admin-type stuff that
  * applies to a db as a whole with no user input.
- *   Theoretically, you should be able to specify the module in the class as with other methods
- * (eg, \Model\Production\Raw::sql(...) ), but php doesn't seem to register the contents of
- * an ad-hoc derived Raw{} (ie, sees the class, but not the static function within).
  *
- * @param string $stmt   : a complete, valid, righteous SQL statement, with any embedded values
+ * @param string $stmt : a complete, valid, righteous SQL statement, with any embedded values
  * @return array
  * @throws Exception : if PDO gets a non-PDO error
  */
@@ -1948,20 +1945,14 @@ class Raw extends CrudAbstract
 {
 	public static /*array*/ function sql( /*string*/ $stmt )
 	{
-		// check our params (as much as we can)
-		if (is_string( $stmt ) and is_string( $module ))
+		if (is_string( $stmt ))
 		{
-			// ensure they're not empty and not (too) dangerous
+			// ensure it's not empty and not (too) dangerous
 			// (printable ASCII, quotes are allowed)
-//			$stmt   = filter_var( utf8_decode( trim( $stmt ) ), FILTER_SANITIZE_STRING );
-//			$stmt   = filter_var( trim( $stmt ), FILTER_SANITIZE_STRING );
-			$module = trim( $module );
+			$stmt   = filter_var( utf8_decode( trim( $stmt ) ), FILTER_SANITIZE_STRING );
+			$stmt   = filter_var( trim( $stmt ), FILTER_SANITIZE_STRING );
 
-			if (strLen( $stmt ) > 0  and  strLen( $module ) > 0)
-				return parent::select( $stmt );
-
-			else
-				return array();
+			return (strLen( $stmt ) > 0) ? parent::select( $stmt ) : array();
 		}
 		else
 			return array();
