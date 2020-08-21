@@ -197,13 +197,7 @@ spl_autoload_register( '\\'.__NAMESPACE__.'\\autoloader' );
 
 class Connect
 {
-	const version = 20140716;
-
-	// to specify the adapter that will be used with the database
-	const using_MYSQL = 'MySQL';
-	const using_MYSQLI = 'MySQLi';
-	const using_PDO	= 'PDO';
-	const using_ADODB = 'ADOdb';
+	const version = 20200820;
 
 	const DEFAULT_MODULE = 'Generic';
 
@@ -211,23 +205,22 @@ class Connect
 
 	/**
 	 * Returns a connected database resource (of the type specified).
-	 * ... = Connect::db( Connect::using_PDO );
+	 * ... = Connect::db();
 	 *
 	 * @param string $module_name (optional; would be a user-defined text string, used by us
 	 *                                       simply to differentiate connections to various databases,
 	 *                                       but then looks for like-named parameters in the .ini
 	 *                                       or _config.php file)
-	 * @param string $adapter (optional, but would be one of the constants above)
 	 * @return object 'DB_resource'
 	 * @throws Exception if connection attempt fails. The actual class of Exception will
 	 *		depend upon the api specified.
 	 */
-	public static /*object*/ function db( /*string*/ $module_name = self::DEFAULT_MODULE, /*string*/ $adapter = self::using_PDO )
+	public static /*object*/ function db( /*string*/ $module_name = self::DEFAULT_MODULE )
 	{
 		if ( !isSet( self::$db[ $module_name ] )) // then we haven't seen this one before; set it up now
 			try
 			{
-				new self( $module_name, $adapter ); // call our constructor
+				new self( $module_name ); // call our constructor
 			}
 			catch (Exception $exc)
 			{
@@ -314,10 +307,9 @@ class Connect
 
 	/**
 	 * @param string $module_name : (optional)
-	 * @param string $adapter     : (optional) MySQL, MySQLi, PDO (default), or ADOdb
 	 * @throws Exception if there's a problem with the configuration parameters
 	 */
-	private function __construct( /*string*/ $module_name=self::DEFAULT_MODULE, /*string*/ $adapter=self::using_PDO )
+	private function __construct( /*string*/ $module_name=self::DEFAULT_MODULE )
 	{
 		$default_module = self::DEFAULT_MODULE; // (so we can the constant as a property reference)
 
@@ -390,13 +382,13 @@ class Connect
 				self::$config->$module_name->log = (object) self::$config->$module_name->log;
 
 
-			self::$db[ $module_name ] = new DB_resource( self::$config->$module_name, $adapter );
+			self::$db[ $module_name ] = new DB_resource( self::$config->$module_name );
 		}
 
 		elseif (isSet( self::$config->$default_module )) // then none found; use the generic they gave us
 		{
 			if ( ! isSet( self::$db[ self::DEFAULT_MODULE ] )) // then generic not already set up; do it now
-				new self( self::DEFAULT_MODULE, $adapter ); // call ourselves specifying the generic,
+				new self( self::DEFAULT_MODULE ); // call ourselves specifying the generic
 
 			// and copy its entry:
 			self::$db[ $module_name ] = self::$db[ self::DEFAULT_MODULE ];
@@ -419,6 +411,8 @@ class Connect
 
 class DB_resource
 {
+	const version = 20200820;
+
 	/**
 	 * This will eventually receive the db connection handle.
 	 * @var resource $conn */
@@ -438,10 +432,9 @@ class DB_resource
 
 	/**
 	 * @param stdClass $config
-	 * @param string   $adapter
 	 * @throws Exception
 	 */
-	public function __construct( \stdClass $config, /*string*/ $adapter=Connect::using_PDO )
+	public function __construct( \stdClass $config )
 	{
 		// ensure we have the required parameters
 		if (empty( $config->db->host )
@@ -457,109 +450,22 @@ class DB_resource
 		$this->log->active = (isSet( $log->active ) and !is_null( $this->log->name )) ? (bool)$log->active : false;
 
 		// establish a connection to the server
-		switch ($adapter)
-		{
-			case Connect::using_MYSQLI : case Connect::using_MYSQL :
-			{
-				mysqli_report( MYSQLI_REPORT_STRICT ); // ensure it raises exceptions
+		$dsn = "mysql:host={$config->db->host};"
+		     . ( isSet( $config->db->port ) ? "port={$config->db->port};" : '' )
+		     . ( isSet( $config->db->name ) ? "dbname={$config->db->name}" : '' );
 
-				try
-				{
-					if (isSet( $config->db->name ))
-					{
-						if (isSet( $config->db->port ))
-							$this->conn = new \mysqli( $config->db->host, $config->db->user,
-								$config->db->password, $config->db->name, $config->db->port );
-							// failure will raise a mysqli_sql_exception
+		$this->conn = new \PDO( $dsn, $config->db->user, $config->db->password );
+		// connection failure will raise a PDOException
 
-						else // omit the port parameter
-							$this->conn = new \mysqli( $config->db->host, $config->db->user,
-								$config->db->password, $config->db->name );
-							// failure will raise a mysqli_sql_exception
-					}
-					else // omit the db name param
-					{
-						if (isSet( $config->db->port ))
-							$this->conn = new \mysqli( $config->db->host, $config->db->user,
-								$config->db->password, '', $config->db->port );
-							// failure will raise a mysqli_sql_exception
+		if ( ! $this->conn->setAttribute( \PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION )) // then must raise an exception manually
+			throw new Exception( 'Failed on PDO::setAttribute( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION ); check server error log' );
+		// now, so will (almost) everything else
 
-						else
-							$this->conn = new \mysqli( $config->db->host, $config->db->user,
-								$config->db->password );
-							// failure will raise a mysqli_sql_exception
-					}
+		// test it:
+		if ( ! $PDOstmt = $this->conn->prepare( 'SHOW DATABASES' )) // then must raise an exception manually
+			throw new Exception( 'Failed on PDO::prepare() connection test; check server error log' );
 
-					if ($this->conn->connect_errno > 0)
-						throw new \Exception( "unable to connect to '{$config->db->host}' via mysqli: "
-													 .$this->conn->connect_error );
-
-					$this->conn->autocommit( true );
-
-					// do we have transaction support? must be 5.5+ or not ISAM/MyISAM
-					$php_version = explode( '.', \PHP_VERSION );
-					if ($php_version[1] < 5)
-					{
-						$result = $this->conn->query( 'SHOW VARIABLES LIKE \'storage_engine\'' );
-						$var = $result->fetch_object();
-						if ($var->Value == 'ISAM' or $var->Value == 'MyISAM')
-						{
-							$this->no_transactions = true; // a flag warning crudAbstract{}'s transaction rtns
-							echo __METHOD__."(): Note: Transactions are not supported with this storage engine ({$var->Value}).";
-						}
-					}
-				}
-				catch (\mysqli_sql_exception $exc) // (we'll let our own Exc pass thru)
-				{
-					throw new \Exception( "unable to connect to '{$config->db->host}' via mysqli: "
-												 .$this->conn->connect_error );
-				}
-				break;
-			}
-
-			case Connect::using_PDO :
-			{
-				$dsn = "mysql:host={$config->db->host};"
-				     . ( isSet( $config->db->port ) ? "port={$config->db->port};" : '' )
-				     . ( isSet( $config->db->name ) ? "dbname={$config->db->name}" : '' );
-
-				$this->conn = new \PDO( $dsn, $config->db->user, $config->db->password );
-				// connection failure will raise a PDOException
-
-				if ( ! $this->conn->setAttribute( \PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION )) // then must raise an exception manually
-					throw new Exception( 'Failed on PDO::setAttribute( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION ); check server error log' );
-				// now, so will (almost) everything else
-
-				// test it:
-				if ( ! $PDOstmt = $this->conn->prepare( 'SHOW DATABASES' )) // then must raise an exception manually
-					throw new Exception( 'Failed on PDO::prepare() connection test; check server error log' );
-
-				$PDOstmt->execute();
-				// execute() failure will raise a PDOException
-
-				break;
-			}
-
-/*			case Connect::using_ADODB :
-			{
-				require_once ('/opt/local/share/adodb5/adodb.inc.php');
-				require_once ('/opt/local/share/adodb5/adodb-exceptions.inc.php');
-
-				$dsn = "mysql://{$config->db->user}:{$config->db->password}@{$config->db->host}".
-				     . ( isSet( $config->db->name ) ? "/{$config->db->name}" : '' )
-				     . ( isSet( $config->db->port ) ? ":{$config->db->port}" : '' );
-				// can we do it this way, too? need to try when ADOdb is available
-				//$dsn = "mysql:host={$config->db->host};username={$config->db->user};password={$config->db->password};"
-				       . ( isSet( $config->db->name ) ? "dbname={$config->db->name};" : '' )
-				       . ( isSet( $config->db->port ) ? "port={$config->db->port};" : '' );
-
-				$this->conn = ADOnewConnection( $dsn ); // failure will raise an ADOdb_Exception
-				$this->conn->setFetchMode( ADODB_FETCH_ASSOC );
-				break;
-			} */
-			default :
-				throw new \Exception( __METHOD__."( '{$adapter}' )? I don't recognize the adapter that was specified; cannot proceed." );
-		}
+		$PDOstmt->execute(); // (failure will raise a PDOException)
 
 		// if using Zend's logger, just set this to null
 		if ($this->log->active and !empty( $this->log->name ))
@@ -671,7 +577,7 @@ class DB_resource
  */
 abstract class CrudAbstract
 {
-	const version = 20140716;
+	const version = 20200820;
 
 	/**
 	 * Emits the DB query statement and values to the query log.
@@ -1956,7 +1862,8 @@ abstract class CrudAbstract
 
 
 	/**
-	 * Recognizes and extracts db functions from within the fields.
+	 * Recognizes and extracts db functions from within the fields. The function names must
+	 * be UPPERCASE and followed by '(' and eventually ')' to be recognized as such.
 	 *
 	 * Normally we just use ? placeholders and let execute() bind the values; but if a value is
 	 * actually a db function, prepare() doesn't detect it and just treats it like a string and
